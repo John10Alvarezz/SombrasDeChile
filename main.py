@@ -13,10 +13,13 @@ from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.spinner import Spinner
 from kivy.uix.popup import Popup
 from kivy.uix.widget import Widget
+from kivy.uix.filechooser import FileChooserIconView
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle, Line, Rectangle
 from kivy.metrics import dp, sp
 from database import Database
+from widgets.navbar import NavBar
+from widgets.story_card import StoryCard
 import os
 
 Window.clearcolor = (0.08, 0.08, 0.12, 1)
@@ -26,6 +29,8 @@ Window.size = (400, 700)
 from kivy.core.text import Label as CoreLabel
 from kivy.core.text.markup import MarkupLabel
 from kivy.core.text import DEFAULT_FONT
+from kivy.core.text import LabelBase
+from kivy.uix.carousel import Carousel
 
 # Configurar fuente para mejor soporte de emojis
 def configure_font():
@@ -37,6 +42,18 @@ def configure_font():
         
         # Configurar el proveedor de texto para mejor soporte de emojis
         from kivy.core.text import Label as CoreLabel
+        # Registrar fuente de emojis de Windows si está disponible
+        potential_paths = [
+            r"C:\\Windows\\Fonts\\seguiemj.ttf",  # Segoe UI Emoji
+            r"C:\\Windows\\Fonts\\SegoeUIEmoji.ttf"
+        ]
+        for p in potential_paths:
+            if os.path.exists(p):
+                try:
+                    LabelBase.register(name='SegoeUIEmoji', fn_regular=p)
+                    break
+                except Exception:
+                    pass
         print("Configuración de fuente completada")
         
     except Exception as e:
@@ -45,62 +62,6 @@ def configure_font():
 # Configurar la fuente al inicio
 configure_font()
 
-class NavBar(BoxLayout):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = 'horizontal'
-        self.size_hint = (1, None)
-        self.height = dp(65)
-        self.screen_manager = None
-        self.spacing = 0
-        self.padding = [0, 0, 0, 0]
-
-        with self.canvas.before:
-            Color(0.1, 0.1, 0.14, 1)
-            self.bg = Rectangle(pos=self.pos, size=self.size)
-
-        self.bind(pos=self.update_bg, size=self.update_bg)
-
-        self.create_nav_buttons()
-
-    def update_bg(self, *args):
-        self.bg.pos = self.pos
-        self.bg.size = self.size
-
-    def create_nav_buttons(self):
-        buttons = [
-            ('[color=#FFD700]⌂[/color]\nInicio', 'feed'),
-            ('[color=#FFD700]🔍[/color]\nBuscar', 'search'),
-            ('[color=#FFD700]+[/color]\nCrear', 'create'),
-            ('[color=#FFD700]👤[/color]\nPerfil', 'profile')
-        ]
-
-        for text, screen_name in buttons:
-            btn = Button(
-                text=text,
-                background_color=(0, 0, 0, 0),
-                background_normal='',
-                color=(0.7, 0.7, 0.7, 1),
-                font_size=sp(11),
-                halign='center',
-                valign='middle',
-                markup=True
-            )
-            btn.bind(on_press=lambda x, s=screen_name: self.change_screen(s))
-            self.add_widget(btn)
-
-    def set_screen_manager(self, screen_manager):
-        self.screen_manager = screen_manager
-
-    def change_screen(self, screen_name):
-        if self.screen_manager:
-            try:
-                self.screen_manager.current = screen_name
-                print(f"Cambiando a pantalla: {screen_name}")
-            except Exception as e:
-                print(f"Error cambiando a pantalla {screen_name}: {e}")
-        else:
-            print(f"Screen manager no disponible para cambiar a {screen_name}")
 
 class WelcomeScreen(Screen):
     def __init__(self, **kwargs):
@@ -518,178 +479,14 @@ class RegisterScreen(Screen):
         popup.open()
 
 
-class StoryCard(BoxLayout):
-    def __init__(self, story, on_like=None, on_reaction=None, show_actions=True, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = 'vertical'
-        self.size_hint_y = None
-        self.height = dp(240)
-        self.spacing = dp(8)
-        self.padding = [dp(12), dp(12)]
-        self.story = story
-        self.on_like = on_like
-        self.on_reaction = on_reaction
-
-        with self.canvas.before:
-            Color(0.12, 0.12, 0.17, 1)
-            self.bg = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(15)])
-
-        self.bind(pos=self.update_bg, size=self.update_bg)
-
-        header = BoxLayout(size_hint_y=None, height=dp(35), spacing=dp(8))
-
-        username_text = story.get('username', 'Anónimo') if not story.get('is_anonymous') else '[color=#FFD700]👤[/color] Anónimo'
-        username = Label(
-            text=username_text,
-            font_size=sp(14),
-            bold=True,
-            color=(0.9, 0.9, 0.9, 1),
-            size_hint_x=0.5,
-            halign='left',
-            valign='middle',
-            markup=True
-        )
-        username.bind(size=username.setter('text_size'))
-
-        category_color = self.get_category_color(story.get('category', 'Aparición'))
-        category = Label(
-            text=f"[color=#FFD700]📍[/color] {story.get('category', 'Aparición')}",
-            font_size=sp(11),
-            color=category_color,
-            size_hint_x=0.5,
-            halign='right',
-            valign='middle',
-            markup=True
-        )
-        category.bind(size=category.setter('text_size'))
-
-        header.add_widget(username)
-        header.add_widget(category)
-
-        location = Label(
-            text=f"[color=#FFD700]📍[/color] {story.get('location', 'Sin ubicación')}",
-            font_size=sp(12),
-            color=(0.6, 0.6, 0.7, 1),
-            size_hint_y=None,
-            height=dp(25),
-            halign='left',
-            valign='middle',
-            markup=True
-        )
-        location.bind(size=location.setter('text_size'))
-
-        content_text = story.get('content', '')
-        if len(content_text) > 180:
-            content_text = content_text[:180] + '...'
-
-        content = Label(
-            text=content_text,
-            font_size=sp(13),
-            color=(0.85, 0.85, 0.85, 1),
-            size_hint_y=None,
-            height=dp(90),
-            text_size=(Window.width - dp(50), None),
-            halign='left',
-            valign='top'
-        )
-
-        if show_actions:
-            actions = BoxLayout(size_hint_y=None, height=dp(45), spacing=dp(5))
-
-            like_btn = Button(
-                text=f"[color=#FFD700]●[/color] {story.get('likes', 0)}",
-                size_hint_x=0.25,
-                background_normal='',
-                background_color=(0.3, 0.2, 0.4, 1),
-                color=(1, 1, 1, 1),
-                font_size=sp(12),
-                markup=True
-            )
-            if self.on_like:
-                like_btn.bind(on_press=lambda x: self.on_like(story))
-
-            miedo_btn = Button(
-                text=f"[color=#FF6B6B]![/color] {story.get('miedo', 0)}",
-                size_hint_x=0.25,
-                background_normal='',
-                background_color=(0.35, 0.15, 0.25, 1),
-                color=(1, 1, 1, 1),
-                font_size=sp(12),
-                markup=True
-            )
-            if self.on_reaction:
-                miedo_btn.bind(on_press=lambda x: self.on_reaction(story, 'miedo'))
-
-            sorpresa_btn = Button(
-                text=f"[color=#4ECDC4]?[/color] {story.get('sorpresa', 0)}",
-                size_hint_x=0.25,
-                background_normal='',
-                background_color=(0.25, 0.25, 0.35, 1),
-                color=(1, 1, 1, 1),
-                font_size=sp(12),
-                markup=True
-            )
-            if self.on_reaction:
-                sorpresa_btn.bind(on_press=lambda x: self.on_reaction(story, 'sorpresa'))
-
-            incredulidad_btn = Button(
-                text=f"[color=#FFE66D]~[/color] {story.get('incredulidad', 0)}",
-                size_hint_x=0.25,
-                background_normal='',
-                background_color=(0.3, 0.3, 0.25, 1),
-                color=(1, 1, 1, 1),
-                font_size=sp(12),
-                markup=True
-            )
-            if self.on_reaction:
-                incredulidad_btn.bind(on_press=lambda x: self.on_reaction(story, 'incredulidad'))
-
-            actions.add_widget(like_btn)
-            actions.add_widget(miedo_btn)
-            actions.add_widget(sorpresa_btn)
-            actions.add_widget(incredulidad_btn)
-
-            date = Label(
-                text=story.get('created_at', ''),
-                font_size=sp(10),
-                color=(0.5, 0.5, 0.5, 1),
-                size_hint_y=None,
-                height=dp(20),
-                halign='right',
-                valign='middle'
-            )
-            date.bind(size=date.setter('text_size'))
-
-            self.add_widget(header)
-            self.add_widget(location)
-            self.add_widget(content)
-            self.add_widget(actions)
-            self.add_widget(date)
-        else:
-            self.add_widget(header)
-            self.add_widget(location)
-            self.add_widget(content)
-
-    def get_category_color(self, category):
-        colors = {
-            'Aparición': (0.6, 0.4, 0.8, 1),
-            'Fantasma': (0.5, 0.5, 0.7, 1),
-            'OVNI': (0.4, 0.6, 0.8, 1),
-            'Leyenda': (0.7, 0.5, 0.3, 1),
-            'Psicofonía': (0.8, 0.4, 0.4, 1),
-            'Criatura': (0.5, 0.7, 0.4, 1)
-        }
-        return colors.get(category, (0.6, 0.6, 0.6, 1))
-
-    def update_bg(self, *args):
-        self.bg.pos = self.pos
-        self.bg.size = self.size
 
 class FeedScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.db = Database()
         self.is_guest = False
+        self.page_size = 10
+        self.offset = 0
 
         layout = BoxLayout(orientation='vertical')
 
@@ -713,7 +510,8 @@ class FeedScreen(Screen):
             color=(0.95, 0.95, 0.95, 1),
             halign='left',
             valign='middle',
-            markup=True
+            markup=True,
+            font_name='SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         title.bind(size=title.setter('text_size'))
         header.add_widget(title)
@@ -742,11 +540,15 @@ class FeedScreen(Screen):
         self.header_bg.size = instance.size
 
     def on_enter(self):
+        self.reset_and_load()
+
+    def reset_and_load(self):
+        self.offset = 0
+        self.stories_layout.clear_widgets()
         self.load_stories()
 
     def load_stories(self):
-        self.stories_layout.clear_widgets()
-        stories = self.db.get_all_stories()
+        stories = self.db.get_all_stories(limit=self.page_size, offset=self.offset)
 
         if not stories:
             no_stories = Label(
@@ -764,19 +566,74 @@ class FeedScreen(Screen):
                     on_reaction=self.add_reaction if not self.is_guest else None,
                     show_actions=not self.is_guest
                 )
+                # Al tocar la tarjeta, abrir detalle
+                card.bind(on_touch_down=lambda w, t, s=story: self.open_story_detail(s) if w.collide_point(*t.pos) and t.is_double_tap is False else None)
                 self.stories_layout.add_widget(card)
+
+            # Mostrar botón "Cargar más" si podría haber más resultados
+            if len(stories) == self.page_size:
+                load_more_btn = Button(
+                    text='Cargar más',
+                    size_hint_y=None,
+                    height=dp(50),
+                    background_normal='',
+                    background_color=(0.2, 0.2, 0.25, 1),
+                    color=(1, 1, 1, 1),
+                    font_size=sp(14)
+                )
+                load_more_btn.bind(on_press=self.load_more)
+                self.stories_layout.add_widget(load_more_btn)
 
     def like_story(self, story):
         app = App.get_running_app()
         if hasattr(app, 'current_user'):
             self.db.add_like(story['id'], app.current_user['id'])
-            self.load_stories()
+            self.reset_and_load()
 
     def add_reaction(self, story, tipo):
         app = App.get_running_app()
         if hasattr(app, 'current_user'):
             self.db.add_reaction(story['id'], app.current_user['id'], tipo)
-            self.load_stories()
+            self.reset_and_load()
+
+    def load_more(self, instance):
+        # Remover el botón "Cargar más" actual antes de añadir nuevos elementos
+        if instance in self.stories_layout.children:
+            self.stories_layout.remove_widget(instance)
+        self.offset += self.page_size
+        self.load_stories()
+
+    def open_story_detail(self, story):
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=[dp(12), dp(12)])
+
+        title = Label(
+            text=('[color=#FFD700]👤[/color] Anónimo' if story.get('is_anonymous') else f"[color=#FFD700]👤[/color] {story.get('username','')}") + f"  [color=#FFD700]📍[/color] {story.get('location','')}",
+            markup=True,
+            color=(0.95,0.95,0.95,1),
+            font_size=sp(16)
+        )
+        content.add_widget(title)
+
+        full = Label(text=story.get('content',''), color=(0.9,0.9,0.9,1), font_size=sp(14))
+        full.bind(size=full.setter('text_size'))
+        content.add_widget(full)
+
+        images = story.get('images') or []
+        if images:
+            carousel = Carousel(direction='right', loop=True, size_hint_y=None, height=dp(260))
+            for path in images:
+                try:
+                    img = Image(source=path, allow_stretch=True, keep_ratio=True)
+                    carousel.add_widget(img)
+                except Exception as e:
+                    print(f"Error cargando imagen en detalle: {e}")
+            content.add_widget(carousel)
+
+        btn_close = Button(text='Cerrar', size_hint_y=None, height=dp(48), background_normal='', background_color=(0.5,0.2,0.6,1), color=(1,1,1,1))
+        popup = Popup(title='Detalle de Historia', content=content, size_hint=(0.92, 0.9), background_color=(0.1,0.1,0.14,1))
+        btn_close.bind(on_press=popup.dismiss)
+        content.add_widget(btn_close)
+        popup.open()
 
 class SearchScreen(Screen):
     def __init__(self, **kwargs):
@@ -913,6 +770,7 @@ class CreateScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.db = Database()
+        self.selected_images = []  # rutas locales guardadas
 
         layout = BoxLayout(orientation='vertical')
 
@@ -1024,6 +882,7 @@ class CreateScreen(Screen):
             font_size=sp(20),
             markup=True
         )
+        photo_btn.bind(on_press=self.open_file_chooser)
 
         options_layout.add_widget(self.anonymous_toggle)
         options_layout.add_widget(photo_btn)
@@ -1045,6 +904,9 @@ class CreateScreen(Screen):
         form_layout.add_widget(category_label)
         form_layout.add_widget(self.category_spinner)
         form_layout.add_widget(options_layout)
+        # Preview de imágenes seleccionadas
+        self.images_preview = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(100), spacing=dp(6))
+        form_layout.add_widget(self.images_preview)
         form_layout.add_widget(publish_btn)
 
         scroll.add_widget(form_layout)
@@ -1084,11 +946,18 @@ class CreateScreen(Screen):
             category=category,
             is_anonymous=is_anonymous
         ):
+            # Obtener el último story insertado por el usuario para asociar imágenes
+            stories = self.db.get_user_stories(app.current_user['id'])
+            new_story_id = stories[0]['id'] if stories else None
+            if new_story_id and self.selected_images:
+                self.db.add_story_images(new_story_id, self.selected_images)
             self.show_popup('Éxito', 'Historia publicada exitosamente')
             self.content_input.text = ''
             self.location_input.text = ''
             self.category_spinner.text = 'Aparición'
             self.anonymous_toggle.state = 'normal'
+            self.selected_images = []
+            self.images_preview.clear_widgets()
             self.manager.current = 'feed'
         else:
             self.show_popup('Error', 'No se pudo publicar la historia')
@@ -1107,6 +976,57 @@ class CreateScreen(Screen):
         btn_close.bind(on_press=popup.dismiss)
         content.add_widget(btn_close)
         popup.open()
+
+    def open_file_chooser(self, instance):
+        chooser = FileChooserIconView(filters=['*.png', '*.jpg', '*.jpeg', '*.webp'], multiselect=True)
+        chooser.path = os.path.expanduser('~')
+
+        def on_select(_instance, selection):
+            # Limitar a 4 y copiar a carpeta media local
+            target_dir = os.path.join(os.getcwd(), 'media')
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir, exist_ok=True)
+            chosen = selection[:4]
+            saved_paths = []
+            for src in chosen:
+                try:
+                    filename = os.path.basename(src)
+                    # evitar colisiones
+                    base, ext = os.path.splitext(filename)
+                    unique_name = f"{base}_{int(Window._get_window()._counter if hasattr(Window, '_get_window') else 0)}{ext}"
+                    dest = os.path.join(target_dir, unique_name)
+                    with open(src, 'rb') as fsrc, open(dest, 'wb') as fdst:
+                        fdst.write(fsrc.read())
+                    # Usar ruta relativa para Kivy
+                    saved_paths.append(dest)
+                except Exception as e:
+                    print(f"Error copiando imagen: {e}")
+
+            self.selected_images = saved_paths
+            self.refresh_images_preview()
+            popup.dismiss()
+
+        popup_content = BoxLayout(orientation='vertical')
+        popup_content.add_widget(chooser)
+        btns = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10), padding=[dp(10), dp(10)])
+        btn_ok = Button(text='Seleccionar')
+        btn_cancel = Button(text='Cancelar')
+        btns.add_widget(btn_cancel)
+        btns.add_widget(btn_ok)
+        popup_content.add_widget(btns)
+        popup = Popup(title='Selecciona hasta 4 imágenes', content=popup_content, size_hint=(0.9, 0.9))
+        btn_cancel.bind(on_press=popup.dismiss)
+        btn_ok.bind(on_press=lambda x: on_select(chooser, chooser.selection))
+        popup.open()
+
+    def refresh_images_preview(self):
+        self.images_preview.clear_widgets()
+        for path in self.selected_images[:4]:
+            try:
+                img = Image(source=path, allow_stretch=True, keep_ratio=True)
+                self.images_preview.add_widget(img)
+            except Exception as e:
+                print(f"Error cargando preview: {e}")
 
 class ProfileScreen(Screen):
     def __init__(self, **kwargs):
@@ -1308,7 +1228,7 @@ class ParanormalApp(App):
         self.title = 'Historias Paranormales de Chile'
 
         db = Database()
-        all_stories = db.get_all_stories()
+        all_stories = db.get_all_stories(limit=1, offset=0)
         if len(all_stories) == 0:
             db.create_sample_data()
 

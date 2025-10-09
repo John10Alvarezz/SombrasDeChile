@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 import sqlite3
 import hashlib
+try:
+    import bcrypt  # opcional; si no está instalado, hacemos fallback a SHA-256
+    HAS_BCRYPT = True
+except Exception:
+    bcrypt = None
+    HAS_BCRYPT = False
 from datetime import datetime
 import os
 
@@ -12,6 +18,11 @@ class Database:
     def get_connection(self):
         conn = sqlite3.connect(self.db_name)
         conn.row_factory = sqlite3.Row
+        # Activar claves foráneas para cada conexión
+        try:
+            conn.execute('PRAGMA foreign_keys = ON')
+        except Exception:
+            pass
         return conn
 
     def init_database(self):
@@ -79,17 +90,59 @@ class Database:
             )
         ''')
 
+        # Tabla para múltiples imágenes por historia
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS story_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (story_id) REFERENCES historias(id)
+            )
+        ''')
+
         conn.commit()
+        # Crear índices útiles para rendimiento
+        self.ensure_indices(cursor)
         conn.close()
 
-    def hash_password(self, password):
+    def ensure_indices(self, cursor):
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_historias_created_at ON historias(created_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_historias_category ON historias(category)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_historias_location ON historias(location)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_historias_user_id ON historias(user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_likes_story_id ON likes(story_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reacciones_story_id ON reacciones(story_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_story_images_story_id ON story_images(story_id)')
+
+    def hash_password_sha256(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
+
+    def hash_password_bcrypt(self, password):
+        if not HAS_BCRYPT:
+            # Fallback si bcrypt no está disponible
+            return self.hash_password_sha256(password)
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+    def verify_password(self, password, stored_hash):
+        # Compatibilidad: detectar bcrypt vs sha256
+        if HAS_BCRYPT:
+            try:
+                if stored_hash.startswith('$2a$') or stored_hash.startswith('$2b$') or stored_hash.startswith('$2y$'):
+                    return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+            except Exception:
+                pass
+        # Fallback SHA-256
+        return self.hash_password_sha256(password) == stored_hash
 
     def create_user(self, username, email, password):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            password_hash = self.hash_password(password)
+            # Si hay bcrypt disponible, usarlo; de lo contrario, SHA-256
+            password_hash = self.hash_password_bcrypt(password) if HAS_BCRYPT else self.hash_password_sha256(password)
 
             cursor.execute(
                 'INSERT INTO usuarios (username, email, password_hash) VALUES (?, ?, ?)',
@@ -105,18 +158,31 @@ class Database:
     def login_user(self, username, password):
         conn = self.get_connection()
         cursor = conn.cursor()
-        password_hash = self.hash_password(password)
 
-        cursor.execute(
-            'SELECT * FROM usuarios WHERE username = ? AND password_hash = ?',
-            (username, password_hash)
-        )
+        cursor.execute('SELECT * FROM usuarios WHERE username = ?', (username,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return None
 
-        user = cursor.fetchone()
+        user = dict(row)
+        stored_hash = user.get('password_hash', '')
+
+        if self.verify_password(password, stored_hash):
+            # Migración: si es SHA-256, actualizar a bcrypt
+            # Migración a bcrypt si está disponible y el hash aún es SHA-256
+            if HAS_BCRYPT:
+                try:
+                    if not (stored_hash.startswith('$2a$') or stored_hash.startswith('$2b$') or stored_hash.startswith('$2y$')):
+                        new_hash = self.hash_password_bcrypt(password)
+                        cursor.execute('UPDATE usuarios SET password_hash = ? WHERE id = ?', (new_hash, user['id']))
+                        conn.commit()
+                except Exception:
+                    pass
+            conn.close()
+            return user
+
         conn.close()
-
-        if user:
-            return dict(user)
         return None
 
     def create_story(self, user_id, content, location=None, category='Aparición', is_anonymous=False, photo_path=None):
@@ -137,7 +203,7 @@ class Database:
             print(f"Error al crear historia: {e}")
             return False
 
-    def get_all_stories(self):
+    def get_all_stories(self, limit=20, offset=0):
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -146,19 +212,43 @@ class Database:
                    (SELECT COUNT(*) FROM likes WHERE story_id = h.id) as likes,
                    (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'miedo') as miedo,
                    (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'sorpresa') as sorpresa,
-                   (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'incredulidad') as incredulidad
+                   (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'incredulidad') as incredulidad,
+                   (SELECT GROUP_CONCAT(si.path, '|') FROM story_images si WHERE si.story_id = h.id ORDER BY si.sort_order, si.id) as images
             FROM historias h
             LEFT JOIN usuarios u ON h.user_id = u.id
             ORDER BY h.created_at DESC
-        ''')
+            LIMIT ? OFFSET ?
+        ''', (limit, offset))
 
         stories = [dict(row) for row in cursor.fetchall()]
         conn.close()
 
         for story in stories:
             story['created_at'] = self.format_date(story['created_at'])
+            if story.get('images'):
+                story['images'] = [p for p in story['images'].split('|') if p]
+            else:
+                story['images'] = []
 
         return stories
+
+    def add_story_images(self, story_id, image_paths):
+        if not image_paths:
+            return True
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            for idx, path in enumerate(image_paths[:4]):
+                cursor.execute(
+                    'INSERT INTO story_images (story_id, path, sort_order) VALUES (?, ?, ?)',
+                    (story_id, path, idx)
+                )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al guardar imágenes: {e}")
+            return False
 
     def get_user_stories(self, user_id):
         conn = self.get_connection()
