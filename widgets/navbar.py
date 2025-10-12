@@ -10,7 +10,7 @@ class NavBar(BoxLayout):
         super().__init__(**kwargs)
         self.orientation = 'horizontal'
         self.size_hint = (1, None)
-        self.height = dp(65)
+        self.height = dp(80)  # Aumentado de 65 a 80
         self.screen_manager = None
         self.spacing = 0
         self.padding = [0, 0, 0, 0]
@@ -29,7 +29,7 @@ class NavBar(BoxLayout):
 
     def create_nav_buttons(self):
         buttons = [
-            ('[color=#FFD700]⌂[/color]\nInicio', 'feed'),
+            ('[color=#FFD700]🏠[/color]\nInicio', 'feed'),
             ('[color=#FFD700]🔍[/color]\nBuscar', 'search'),
             ('[color=#FFD700]+[/color]\nCrear', 'create'),
             ('[color=#FFD700]👤[/color]\nPerfil', 'profile')
@@ -41,11 +41,11 @@ class NavBar(BoxLayout):
                 background_color=(0, 0, 0, 0),
                 background_normal='',
                 color=(0.7, 0.7, 0.7, 1),
-                font_size=sp(11),
+                font_size=sp(16),  # Aumentado de 11 a 16
                 halign='center',
                 valign='middle',
                 markup=True,
-                font_name='SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
+                font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
             )
             btn.bind(on_press=lambda x, s=screen_name: self.change_screen(s))
             self.add_widget(btn)

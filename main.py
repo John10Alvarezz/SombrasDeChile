@@ -39,23 +39,50 @@ def configure_font():
         # Configurar fuente por defecto
         from kivy.core.text import DEFAULT_FONT
         print(f"Fuente por defecto: {DEFAULT_FONT}")
-        
-        # Configurar el proveedor de texto para mejor soporte de emojis
-        from kivy.core.text import Label as CoreLabel
-        # Registrar fuente de emojis de Windows si está disponible
+
+        # Lista ampliada de rutas de fuentes emoji para Windows
         potential_paths = [
             r"C:\\Windows\\Fonts\\seguiemj.ttf",  # Segoe UI Emoji
-            r"C:\\Windows\\Fonts\\SegoeUIEmoji.ttf"
+            r"C:\\Windows\\Fonts\\SegoeUIEmoji.ttf",
+            r"C:\\Windows\\Fonts\\seguisym.ttf",    # Segoe UI Symbol (contiene algunos emojis)
+            r"C:\\Windows\\Fonts\\arial.ttf",       # Arial (soporte Unicode)
+            r"C:\\Windows\\Fonts\\calibri.ttf",     # Calibri
+            r"C:\\Windows\\Fonts\\tahoma.ttf",      # Tahoma
         ]
+
+        emoji_font_registered = False
         for p in potential_paths:
             if os.path.exists(p):
                 try:
-                    LabelBase.register(name='SegoeUIEmoji', fn_regular=p)
+                    LabelBase.register(name='EmojiFont', fn_regular=p)
+                    emoji_font_registered = True
+                    print(f"Fuente emoji registrada desde: {p}")
                     break
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error registrando fuente {p}: {e}")
+                    continue
+
+        # Si no se encontró fuente específica, intentar usar defaults
+        if not emoji_font_registered:
+            try:
+                LabelBase.register_defaults()
+                print("Usando fuentes por defecto del sistema")
+            except Exception as e:
+                print(f"Error registrando defaults: {e}")
+
+        # Forzar registro de Segoe UI Emoji si existe
+        try:
+            import ctypes
+            # Intentar acceder a fuentes del sistema
+            font_path = r"C:\\Windows\\Fonts\\seguiemj.ttf"
+            if os.path.exists(font_path):
+                LabelBase.register(name='SegoeUIEmoji', fn_regular=font_path)
+                print("Segoe UI Emoji registrado exitosamente")
+        except Exception as e:
+            print(f"No se pudo registrar Segoe UI Emoji: {e}")
+
         print("Configuración de fuente completada")
-        
+
     except Exception as e:
         print(f"Error configurando fuente: {e}")
 
@@ -84,12 +111,13 @@ class WelcomeScreen(Screen):
         )
 
         title = Label(
-            text='[color=#9966CC]●[/color]',
+            text='[color=#9966CC]👻[/color]',
             font_size=sp(80),
             color=(0.6, 0.3, 0.7, 1),
             size_hint_y=None,
             height=dp(100),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
 
         app_title = Label(
@@ -239,13 +267,13 @@ class LoginScreen(Screen):
         btn_register.bind(on_press=self.go_to_register)
 
         btn_back = Button(
-            text='← Volver',
+            text='⬅ Volver',
             size_hint_y=None,
             height=dp(45),
             background_normal='',
             background_color=(0.2, 0.2, 0.25, 1),
             color=(0.7, 0.7, 0.7, 1),
-            font_size=sp(14)
+            font_size=sp(16)
         )
         btn_back.bind(on_press=self.go_back)
 
@@ -404,13 +432,13 @@ class RegisterScreen(Screen):
         btn_register.bind(on_press=self.register)
 
         btn_back = Button(
-            text='← Volver',
+            text='⬅ Volver',
             size_hint_y=None,
             height=dp(45),
             background_normal='',
             background_color=(0.2, 0.2, 0.25, 1),
             color=(0.7, 0.7, 0.7, 1),
-            font_size=sp(14)
+            font_size=sp(16)
         )
         btn_back.bind(on_press=self.go_back)
 
@@ -566,8 +594,10 @@ class FeedScreen(Screen):
                     on_reaction=self.add_reaction if not self.is_guest else None,
                     show_actions=not self.is_guest
                 )
-                # Al tocar la tarjeta, abrir detalle
-                card.bind(on_touch_down=lambda w, t, s=story: self.open_story_detail(s) if w.collide_point(*t.pos) and t.is_double_tap is False else None)
+                # Al tocar header, location o content de la tarjeta, abrir detalle
+                card.header.bind(on_touch_down=lambda w, t, s=story: self.open_story_detail(s) if w.collide_point(*t.pos) else None)
+                card.location.bind(on_touch_down=lambda w, t, s=story: self.open_story_detail(s) if w.collide_point(*t.pos) else None)
+                card.content.bind(on_touch_down=lambda w, t, s=story: self.open_story_detail(s) if w.collide_point(*t.pos) else None)
                 self.stories_layout.add_widget(card)
 
             # Mostrar botón "Cargar más" si podría haber más resultados
@@ -579,7 +609,7 @@ class FeedScreen(Screen):
                     background_normal='',
                     background_color=(0.2, 0.2, 0.25, 1),
                     color=(1, 1, 1, 1),
-                    font_size=sp(14)
+                    font_size=sp(16)
                 )
                 load_more_btn.bind(on_press=self.load_more)
                 self.stories_layout.add_widget(load_more_btn)
@@ -610,11 +640,12 @@ class FeedScreen(Screen):
             text=('[color=#FFD700]👤[/color] Anónimo' if story.get('is_anonymous') else f"[color=#FFD700]👤[/color] {story.get('username','')}") + f"  [color=#FFD700]📍[/color] {story.get('location','')}",
             markup=True,
             color=(0.95,0.95,0.95,1),
-            font_size=sp(16)
+            font_size=sp(16),
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         content.add_widget(title)
 
-        full = Label(text=story.get('content',''), color=(0.9,0.9,0.9,1), font_size=sp(14))
+        full = Label(text=story.get('content',''), color=(0.9,0.9,0.9,1), font_size=sp(16))
         full.bind(size=full.setter('text_size'))
         content.add_widget(full)
 
@@ -665,7 +696,8 @@ class SearchScreen(Screen):
             height=dp(40),
             halign='left',
             valign='middle',
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         title.bind(size=title.setter('text_size'))
 
@@ -685,7 +717,7 @@ class SearchScreen(Screen):
             foreground_color=(1, 1, 1, 1),
             cursor_color=(1, 1, 1, 1),
             padding=[dp(15), dp(12)],
-            font_size=sp(14)
+            font_size=sp(16)
         )
 
         search_btn = Button(
@@ -695,7 +727,8 @@ class SearchScreen(Screen):
             background_color=(0.5, 0.2, 0.6, 1),
             color=(1, 1, 1, 1),
             font_size=sp(20),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         search_btn.bind(on_press=self.search_stories)
 
@@ -735,7 +768,7 @@ class SearchScreen(Screen):
         if not query:
             info = Label(
                 text='Escribe algo para buscar',
-                font_size=sp(14),
+                font_size=sp(16),
                 color=(0.6, 0.6, 0.6, 1)
             )
             self.results_layout.add_widget(info)
@@ -746,7 +779,7 @@ class SearchScreen(Screen):
         if not stories:
             no_results = Label(
                 text=f'No se encontraron historias para "{query}"',
-                font_size=sp(14),
+                font_size=sp(16),
                 color=(0.6, 0.6, 0.6, 1),
                 halign='center'
             )
@@ -794,7 +827,8 @@ class CreateScreen(Screen):
             color=(0.95, 0.95, 0.95, 1),
             halign='left',
             valign='middle',
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         title.bind(size=title.setter('text_size'))
         header.add_widget(title)
@@ -818,7 +852,7 @@ class CreateScreen(Screen):
             foreground_color=(1, 1, 1, 1),
             cursor_color=(1, 1, 1, 1),
             padding=[dp(15), dp(12)],
-            font_size=sp(14)
+            font_size=sp(16)
         )
 
         self.location_input = TextInput(
@@ -831,12 +865,12 @@ class CreateScreen(Screen):
             foreground_color=(1, 1, 1, 1),
             cursor_color=(1, 1, 1, 1),
             padding=[dp(15), dp(12)],
-            font_size=sp(14)
+            font_size=sp(16)
         )
 
         category_label = Label(
             text='Categoría:',
-            font_size=sp(14),
+            font_size=sp(16),
             color=(0.8, 0.8, 0.8, 1),
             size_hint_y=None,
             height=dp(30),
@@ -853,7 +887,7 @@ class CreateScreen(Screen):
             background_normal='',
             background_color=(0.15, 0.15, 0.2, 1),
             color=(1, 1, 1, 1),
-            font_size=sp(14)
+            font_size=sp(16)
         )
 
         options_layout = BoxLayout(
@@ -870,7 +904,8 @@ class CreateScreen(Screen):
             background_color=(0.25, 0.2, 0.3, 1),
             color=(1, 1, 1, 1),
             font_size=sp(13),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
 
         photo_btn = Button(
@@ -880,7 +915,8 @@ class CreateScreen(Screen):
             background_color=(0.25, 0.2, 0.3, 1),
             color=(1, 1, 1, 1),
             font_size=sp(20),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         photo_btn.bind(on_press=self.open_file_chooser)
 
@@ -1055,7 +1091,8 @@ class ProfileScreen(Screen):
             color=(0.95, 0.95, 0.95, 1),
             halign='left',
             valign='middle',
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         title.bind(size=title.setter('text_size'))
         header.add_widget(title)
@@ -1144,16 +1181,18 @@ class ProfileScreen(Screen):
             color=(0.95, 0.95, 0.95, 1),
             size_hint_y=None,
             height=dp(40),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
 
         email_label = Label(
             text=f"[color=#FFD700]@[/color] {user['email']}",
-            font_size=sp(14),
+            font_size=sp(16),
             color=(0.7, 0.7, 0.7, 1),
             size_hint_y=None,
             height=dp(30),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
 
         stats_label = Label(
@@ -1162,7 +1201,8 @@ class ProfileScreen(Screen):
             color=(0.8, 0.8, 0.8, 1),
             size_hint_y=None,
             height=dp(35),
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
 
         profile_info.add_widget(username_label)
@@ -1189,7 +1229,8 @@ class ProfileScreen(Screen):
             height=dp(45),
             halign='left',
             valign='middle',
-            markup=True
+            markup=True,
+            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
         stories_title.bind(size=stories_title.setter('text_size'))
 
@@ -1204,7 +1245,7 @@ class ProfileScreen(Screen):
         else:
             no_stories = Label(
                 text='Aún no has publicado historias\n\n¡Comparte tu experiencia paranormal!',
-                font_size=sp(14),
+                font_size=sp(16),
                 color=(0.6, 0.6, 0.6, 1),
                 halign='center',
                 size_hint_y=None,
