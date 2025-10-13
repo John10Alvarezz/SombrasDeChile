@@ -10,7 +10,7 @@ from kivy.metrics import dp, sp
 
 
 class StoryCard(BoxLayout):
-    def __init__(self, story, on_like=None, on_reaction=None, show_actions=True, **kwargs):
+    def __init__(self, story, on_like=None, on_reaction=None, on_comment=None, show_actions=True, **kwargs):
         super().__init__(**kwargs)
         self.orientation = 'vertical'
         self.size_hint_y = None
@@ -20,6 +20,7 @@ class StoryCard(BoxLayout):
         self.story = story
         self.on_like = on_like
         self.on_reaction = on_reaction
+        self.on_comment = on_comment
 
         with self.canvas.before:
             Color(0.12, 0.12, 0.17, 1)
@@ -113,6 +114,19 @@ class StoryCard(BoxLayout):
             if self.on_like:
                 like_btn.bind(on_press=lambda x: self.on_like(story))
 
+            comment_btn = Button(
+                text=f"[color=#4ECDC4]💬[/color] Comentar",
+                size_hint_x=0.25,
+                background_normal='',
+                background_color=(0.2, 0.3, 0.4, 1),
+                color=(1, 1, 1, 1),
+                font_size=sp(10),
+                markup=True,
+                font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
+            )
+            if self.on_comment:
+                comment_btn.bind(on_press=lambda x: self.on_comment(story))
+
             miedo_btn = Button(
                 text=f"[color=#FF6B6B]😱[/color] {story.get('miedo', 0)}",
                 size_hint_x=0.25,
@@ -153,6 +167,7 @@ class StoryCard(BoxLayout):
                 incredulidad_btn.bind(on_press=lambda x: self.on_reaction(story, 'incredulidad'))
 
             actions.add_widget(like_btn)
+            actions.add_widget(comment_btn)
             actions.add_widget(miedo_btn)
             actions.add_widget(sorpresa_btn)
             actions.add_widget(incredulidad_btn)

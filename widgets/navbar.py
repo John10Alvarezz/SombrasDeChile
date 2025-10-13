@@ -31,6 +31,7 @@ class NavBar(BoxLayout):
         buttons = [
             ('[color=#FFD700]🏠[/color]\nInicio', 'feed'),
             ('[color=#FFD700]🔍[/color]\nBuscar', 'search'),
+            ('[color=#FFD700]🔔[/color]\nNotificaciones', 'notifications'),
             ('[color=#FFD700]+[/color]\nCrear', 'create'),
             ('[color=#FFD700]👤[/color]\nPerfil', 'profile')
         ]

@@ -102,6 +102,39 @@ class Database:
             )
         ''')
 
+        # Tabla para reportes de contenido
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS reportes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id INTEGER NOT NULL,
+                reporter_id INTEGER NOT NULL,
+                motivo TEXT NOT NULL,
+                descripcion TEXT,
+                estado TEXT DEFAULT 'pendiente',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (story_id) REFERENCES historias(id),
+                FOREIGN KEY (reporter_id) REFERENCES usuarios(id)
+            )
+        ''')
+
+        # Tabla para notificaciones
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notificaciones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                tipo TEXT NOT NULL,
+                titulo TEXT NOT NULL,
+                mensaje TEXT NOT NULL,
+                story_id INTEGER,
+                actor_id INTEGER,
+                leida INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES usuarios(id),
+                FOREIGN KEY (story_id) REFERENCES historias(id),
+                FOREIGN KEY (actor_id) REFERENCES usuarios(id)
+            )
+        ''')
+
         conn.commit()
         # Crear índices útiles para rendimiento
         self.ensure_indices(cursor)
@@ -115,6 +148,10 @@ class Database:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_likes_story_id ON likes(story_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_reacciones_story_id ON reacciones(story_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_story_images_story_id ON story_images(story_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reportes_story_id ON reportes(story_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_reportes_estado ON reportes(estado)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_notificaciones_user_id ON notificaciones(user_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_notificaciones_leida ON notificaciones(leida)')
 
     def hash_password_sha256(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
@@ -303,10 +340,35 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor()
 
+            # Verificar si ya existe el like
+            cursor.execute(
+                'SELECT id FROM likes WHERE story_id = ? AND user_id = ?',
+                (story_id, user_id)
+            )
+
+            if cursor.fetchone():
+                conn.close()
+                return False  # Ya existe el like
+
+            # Agregar el like
             cursor.execute(
                 'INSERT INTO likes (story_id, user_id) VALUES (?, ?)',
                 (story_id, user_id)
             )
+
+            # Obtener información de la historia para la notificación
+            cursor.execute(
+                'SELECT user_id, content FROM historias WHERE id = ?',
+                (story_id,)
+            )
+            story_info = cursor.fetchone()
+
+            if story_info and story_info[0] != user_id:  # No notificar al propio autor
+                # Crear notificación de like
+                cursor.execute(
+                    'INSERT INTO notificaciones (user_id, tipo, titulo, mensaje, story_id, actor_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    (story_info[0], 'like', 'Nuevo like', f'Alguien le dio like a tu historia', story_id, user_id)
+                )
 
             conn.commit()
             conn.close()
@@ -323,6 +385,20 @@ class Database:
                 'INSERT INTO comentarios (story_id, user_id, content) VALUES (?, ?, ?)',
                 (story_id, user_id, content)
             )
+
+            # Obtener información de la historia para la notificación
+            cursor.execute(
+                'SELECT user_id, content FROM historias WHERE id = ?',
+                (story_id,)
+            )
+            story_info = cursor.fetchone()
+
+            if story_info and story_info[0] != user_id:  # No notificar al propio autor
+                # Crear notificación de comentario
+                cursor.execute(
+                    'INSERT INTO notificaciones (user_id, tipo, titulo, mensaje, story_id, actor_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    (story_info[0], 'comment', 'Nuevo comentario', f'Alguien comentó en tu historia', story_id, user_id)
+                )
 
             conn.commit()
             conn.close()
@@ -363,15 +439,286 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor()
 
+            # Verificar si ya existe la reacción
+            cursor.execute(
+                'SELECT id FROM reacciones WHERE story_id = ? AND user_id = ?',
+                (story_id, user_id)
+            )
+
+            if cursor.fetchone():
+                conn.close()
+                return False  # Ya existe la reacción
+
             cursor.execute(
                 'INSERT INTO reacciones (story_id, user_id, tipo) VALUES (?, ?, ?)',
                 (story_id, user_id, tipo)
             )
 
+            # Obtener información de la historia para la notificación
+            cursor.execute(
+                'SELECT user_id, content FROM historias WHERE id = ?',
+                (story_id,)
+            )
+            story_info = cursor.fetchone()
+
+            if story_info and story_info[0] != user_id:  # No notificar al propio autor
+                # Crear notificación de reacción
+                emoji_map = {'miedo': '😱', 'sorpresa': '😮', 'incredulidad': '🙄'}
+                emoji = emoji_map.get(tipo, '😮')
+                cursor.execute(
+                    'INSERT INTO notificaciones (user_id, tipo, titulo, mensaje, story_id, actor_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    (story_info[0], 'reaction', 'Nueva reacción', f'Alguien reaccionó {emoji} a tu historia', story_id, user_id)
+                )
+
             conn.commit()
             conn.close()
             return True
         except sqlite3.IntegrityError:
+            return False
+
+    def update_story(self, story_id, user_id, content, location=None, category='Aparición', is_anonymous=False):
+        """Actualiza una historia existente. Solo el autor puede editarla."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Verificar que el usuario es el autor de la historia
+            cursor.execute('SELECT user_id FROM historias WHERE id = ?', (story_id,))
+            result = cursor.fetchone()
+            
+            if not result or result['user_id'] != user_id:
+                conn.close()
+                return False  # No es el autor
+
+            cursor.execute(
+                '''UPDATE historias 
+                   SET content = ?, location = ?, category = ?, is_anonymous = ?
+                   WHERE id = ? AND user_id = ?''',
+                (content, location, category, 1 if is_anonymous else 0, story_id, user_id)
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al actualizar historia: {e}")
+            return False
+
+    def delete_story(self, story_id, user_id):
+        """Elimina una historia. Solo el autor puede eliminarla."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Verificar que el usuario es el autor de la historia
+            cursor.execute('SELECT user_id FROM historias WHERE id = ?', (story_id,))
+            result = cursor.fetchone()
+            
+            if not result or result['user_id'] != user_id:
+                conn.close()
+                return False  # No es el autor
+
+            # Eliminar en cascada: primero likes, reacciones, comentarios, imágenes y reportes
+            cursor.execute('DELETE FROM likes WHERE story_id = ?', (story_id,))
+            cursor.execute('DELETE FROM reacciones WHERE story_id = ?', (story_id,))
+            cursor.execute('DELETE FROM comentarios WHERE story_id = ?', (story_id,))
+            cursor.execute('DELETE FROM story_images WHERE story_id = ?', (story_id,))
+            cursor.execute('DELETE FROM reportes WHERE story_id = ?', (story_id,))
+            
+            # Finalmente eliminar la historia
+            cursor.execute('DELETE FROM historias WHERE id = ? AND user_id = ?', (story_id, user_id))
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al eliminar historia: {e}")
+            return False
+
+    def create_report(self, story_id, reporter_id, motivo, descripcion=None):
+        """Crea un reporte para una historia."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Verificar que no haya un reporte duplicado del mismo usuario para la misma historia
+            cursor.execute(
+                'SELECT id FROM reportes WHERE story_id = ? AND reporter_id = ?',
+                (story_id, reporter_id)
+            )
+            if cursor.fetchone():
+                conn.close()
+                return False  # Ya existe un reporte de este usuario para esta historia
+
+            cursor.execute(
+                'INSERT INTO reportes (story_id, reporter_id, motivo, descripcion) VALUES (?, ?, ?, ?)',
+                (story_id, reporter_id, motivo, descripcion)
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al crear reporte: {e}")
+            return False
+
+    def get_reports(self, estado='pendiente'):
+        """Obtiene todos los reportes con información de la historia y usuarios."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT r.*, h.content as story_content, h.location, h.category,
+                   u1.username as reporter_username,
+                   u2.username as story_author
+            FROM reportes r
+            LEFT JOIN historias h ON r.story_id = h.id
+            LEFT JOIN usuarios u1 ON r.reporter_id = u1.id
+            LEFT JOIN usuarios u2 ON h.user_id = u2.id
+            WHERE r.estado = ?
+            ORDER BY r.created_at DESC
+        ''', (estado,))
+
+        reports = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+
+        for report in reports:
+            report['created_at'] = self.format_date(report['created_at'])
+
+        return reports
+
+    def update_report_status(self, report_id, new_status):
+        """Actualiza el estado de un reporte."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                'UPDATE reportes SET estado = ? WHERE id = ?',
+                (new_status, report_id)
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al actualizar estado del reporte: {e}")
+            return False
+
+    def create_notification(self, user_id, tipo, titulo, mensaje, story_id=None, actor_id=None):
+        """Crea una nueva notificación para un usuario."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                'INSERT INTO notificaciones (user_id, tipo, titulo, mensaje, story_id, actor_id) VALUES (?, ?, ?, ?, ?, ?)',
+                (user_id, tipo, titulo, mensaje, story_id, actor_id)
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al crear notificación: {e}")
+            return False
+
+    def get_user_notifications(self, user_id, limit=20, offset=0):
+        """Obtiene las notificaciones de un usuario."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT n.*, u.username as actor_username, h.content as story_content
+            FROM notificaciones n
+            LEFT JOIN usuarios u ON n.actor_id = u.id
+            LEFT JOIN historias h ON n.story_id = h.id
+            WHERE n.user_id = ?
+            ORDER BY n.created_at DESC
+            LIMIT ? OFFSET ?
+        ''', (user_id, limit, offset))
+
+        notifications = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+
+        for notification in notifications:
+            notification['created_at'] = self.format_date(notification['created_at'])
+
+        return notifications
+
+    def get_unread_notifications_count(self, user_id):
+        """Obtiene el número de notificaciones no leídas de un usuario."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT COUNT(*) FROM notificaciones WHERE user_id = ? AND leida = 0',
+            (user_id,)
+        )
+
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
+    def mark_notification_as_read(self, notification_id, user_id):
+        """Marca una notificación como leída."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                'UPDATE notificaciones SET leida = 1 WHERE id = ? AND user_id = ?',
+                (notification_id, user_id)
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al marcar notificación como leída: {e}")
+            return False
+
+    def get_story_by_id(self, story_id):
+        """Obtiene una historia por su ID."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT h.*, u.username,
+                   (SELECT COUNT(*) FROM likes WHERE story_id = h.id) as likes,
+                   (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'miedo') as miedo,
+                   (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'sorpresa') as sorpresa,
+                   (SELECT COUNT(*) FROM reacciones WHERE story_id = h.id AND tipo = 'incredulidad') as incredulidad
+            FROM historias h
+            JOIN usuarios u ON h.user_id = u.id
+            WHERE h.id = ?
+        ''', (story_id,))
+
+        story = cursor.fetchone()
+        conn.close()
+
+        if story:
+            story_dict = dict(story)
+            story_dict['created_at'] = self.format_date(story_dict['created_at'])
+            return story_dict
+        return None
+
+    def mark_all_notifications_as_read(self, user_id):
+        """Marca todas las notificaciones de un usuario como leídas."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                'UPDATE notificaciones SET leida = 1 WHERE user_id = ?',
+                (user_id,)
+            )
+
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Error al marcar todas las notificaciones como leídas: {e}")
             return False
 
     def create_sample_data(self):
