@@ -315,7 +315,7 @@ tests/
 
 ---
 
-**📝 Elaborado por**: Desarrollador Senior  
+**📝 Elaborado por**: Emanuel Torres y John Alvarez  
 **📅 Fecha**: 30 de Diciembre, 2024  
 **🔄 Versión**: 1.0  
 **📧 Contacto**: Análisis técnico completo de Sombras de Chile
