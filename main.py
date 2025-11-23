@@ -104,49 +104,66 @@ class WelcomeScreen(Screen):
         content = BoxLayout(
             orientation='vertical',
             size_hint=(0.85, None),
-            height=dp(450),
+            height=dp(620),
             pos_hint={'center_x': 0.5, 'center_y': 0.5},
-            spacing=dp(20),
+            spacing=dp(12),
             padding=[dp(20), dp(20)]
         )
 
+        # Startup image: usar ruta relativa desde el directorio del proyecto
+        startup_path = os.path.join('media', 'fantasmas.png')
+        # Verificar si existe con ruta absoluta también
+        abs_startup_path = os.path.join(os.path.dirname(__file__), 'media', 'fantasmas.png')
+        if os.path.exists(abs_startup_path):
+            try:
+                # Convertir a ruta relativa para Kivy
+                rel_path = os.path.relpath(abs_startup_path, os.path.dirname(__file__))
+                rel_path = rel_path.replace('\\', '/')
+                startup_img = Image(
+                    source=rel_path,
+                    size_hint=(1, None),
+                    height=dp(240),
+                    fit_mode='contain'
+                )
+                content.add_widget(startup_img)
+            except Exception as e:
+                print(f"Error cargando imagen de inicio: {e}")
+
         title = Label(
             text='[color=#9966CC]👻[/color]',
-            font_size=sp(80),
-            color=(0.6, 0.3, 0.7, 1),
-            size_hint_y=None,
-            height=dp(100),
+            font_size=sp(48),
             markup=True,
-            font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
+            halign='center',
+            size_hint_y=None,
+            height=dp(60),
         )
 
         app_title = Label(
-            text='Historias Paranormales\nde Chile',
-            font_size=sp(28),
+            text='Historias Paranormales de Chile',
+            font_size=sp(22),
             bold=True,
             color=(0.95, 0.95, 0.95, 1),
-            halign='center',
             size_hint_y=None,
-            height=dp(80)
+            height=dp(36),
+            halign='center'
         )
-        app_title.bind(size=app_title.setter('text_size'))
 
         subtitle = Label(
-            text='Comparte tus experiencias sobrenaturales',
-            font_size=sp(15),
-            color=(0.7, 0.7, 0.7, 1),
-            halign='center',
+            text='Comparte tus experiencias paranormales con la comunidad',
+            font_size=sp(14),
+            color=(0.75, 0.75, 0.75, 1),
             size_hint_y=None,
-            height=dp(40)
+            height=dp(30),
+            halign='center'
         )
-        subtitle.bind(size=subtitle.setter('text_size'))
 
         btn_guest = Button(
-            text='Continuar como Invitado',
-            size_hint=(1, None),
-            height=dp(55),
+            text='Entrar como invitado',
+            size_hint=(None, None),
+            size=(dp(220), dp(48)),
+            pos_hint={'center_x': 0.5},
             background_normal='',
-            background_color=(0.25, 0.2, 0.3, 1),
+            background_color=(0.2, 0.2, 0.25, 1),
             color=(1, 1, 1, 1),
             font_size=sp(16)
         )
@@ -154,8 +171,9 @@ class WelcomeScreen(Screen):
 
         btn_login = Button(
             text='Iniciar Sesión',
-            size_hint=(1, None),
-            height=dp(55),
+            size_hint=(None, None),
+            size=(dp(220), dp(48)),
+            pos_hint={'center_x': 0.5},
             background_normal='',
             background_color=(0.5, 0.2, 0.6, 1),
             color=(1, 1, 1, 1),
@@ -167,7 +185,7 @@ class WelcomeScreen(Screen):
         content.add_widget(title)
         content.add_widget(app_title)
         content.add_widget(subtitle)
-        content.add_widget(Widget(size_hint_y=None, height=dp(20)))
+        content.add_widget(Widget(size_hint_y=None, height=dp(12)))
         content.add_widget(btn_guest)
         content.add_widget(btn_login)
 
@@ -267,12 +285,12 @@ class LoginScreen(Screen):
         btn_register.bind(on_press=self.go_to_register)
 
         btn_back = Button(
-            text='⬅ Volver',
+            text='Volver',
             size_hint_y=None,
             height=dp(45),
             background_normal='',
             background_color=(0.2, 0.2, 0.25, 1),
-            color=(0.7, 0.7, 0.7, 1),
+            color=(0.9, 0.9, 0.9, 1),
             font_size=sp(16)
         )
         btn_back.bind(on_press=self.go_back)
@@ -284,6 +302,7 @@ class LoginScreen(Screen):
         form_layout.add_widget(Widget(size_hint_y=None, height=dp(10)))
         form_layout.add_widget(btn_login)
         form_layout.add_widget(btn_register)
+        form_layout.add_widget(Widget(size_hint_y=None, height=dp(5)))
         form_layout.add_widget(btn_back)
 
         layout.add_widget(form_layout)
@@ -539,10 +558,30 @@ class FeedScreen(Screen):
             halign='left',
             valign='middle',
             markup=True,
-            font_name='SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
+            font_name='SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None,
+            size_hint_x=None
         )
-        title.bind(size=title.setter('text_size'))
+        # Make the label width match the rendered text so spacer can grow
+        title.bind(texture_size=lambda inst, ts: setattr(title, 'width', ts[0]))
         header.add_widget(title)
+
+        # Spacer and logout button in header (hidden by default)
+        from kivy.uix.widget import Widget as _KivySpacer
+        header.add_widget(_KivySpacer(size_hint_x=1))
+
+        self.logout_btn_header = Button(
+            text='Cerrar Sesión',
+            size_hint=(None, None),
+            size=(dp(140), dp(40)),
+            background_normal='',
+            background_color=(0.6, 0.2, 0.2, 1),
+            color=(1, 1, 1, 1),
+            font_size=sp(14),
+            opacity=0,
+            disabled=True
+        )
+        self.logout_btn_header.bind(on_press=self.header_logout)
+        header.add_widget(self.logout_btn_header)
 
         scroll = ScrollView()
         self.stories_layout = BoxLayout(
@@ -566,6 +605,21 @@ class FeedScreen(Screen):
     def update_header_bg(self, instance, value):
         self.header_bg.pos = instance.pos
         self.header_bg.size = instance.size
+
+    def header_logout(self, instance):
+        """Logout handler for header logout button that works on any screen."""
+        app = App.get_running_app()
+        if hasattr(app, 'current_user'):
+            try:
+                delattr(app, 'current_user')
+            except Exception:
+                pass
+        # navigate to welcome screen if available
+        if hasattr(self, 'manager') and self.manager:
+            try:
+                self.manager.current = 'welcome'
+            except Exception:
+                pass
 
     def on_enter(self):
         self.reset_and_load()
@@ -1033,7 +1087,7 @@ class CreateScreen(Screen):
         self.images_preview.clear_widgets()
         for path in self.selected_images[:4]:
             try:
-                img = Image(source=path, allow_stretch=True, keep_ratio=True)
+                img = Image(source=path, fit_mode='contain')
                 self.images_preview.add_widget(img)
             except Exception as e:
                 print(f"Error cargando preview: {e}")
@@ -1114,13 +1168,29 @@ class StoryDetailScreen(Screen):
         self.current_story = story
         self.content_layout.clear_widgets()
 
-        # Información del autor y ubicación
+        # Información del autor (avatar + nombre) y ubicación
         author_info = BoxLayout(
             orientation='horizontal',
             size_hint_y=None,
-            height=dp(50),
+            height=dp(56),
             spacing=dp(10)
         )
+
+        # Avatar (usar avatar de usuario o default en media/default_avatar.png)
+        avatar_size = dp(44)
+        avatar_path = story.get('user_avatar') or ''
+        if not avatar_path:
+            default_avatar = os.path.join(os.path.dirname(__file__), 'media', 'default_avatar.png')
+            if os.path.exists(default_avatar):
+                avatar_path = default_avatar
+
+        if avatar_path and os.path.exists(avatar_path):
+            try:
+                avatar_widget = Image(source=avatar_path, size_hint=(None, None), size=(avatar_size, avatar_size), fit_mode='contain')
+            except Exception:
+                avatar_widget = Label(text='👤', font_size=sp(22), size_hint_x=None, width=avatar_size)
+        else:
+            avatar_widget = Label(text='👤', font_size=sp(22), size_hint_x=None, width=avatar_size)
 
         username_text = story.get('username', 'Anónimo') if not story.get('is_anonymous') else '[color=#FFD700]👤[/color] Anónimo'
         username = Label(
@@ -1128,7 +1198,7 @@ class StoryDetailScreen(Screen):
             font_size=sp(18),
             bold=True,
             color=(0.9, 0.9, 0.9, 1),
-            size_hint_x=0.6,
+            size_hint_x=0.65,
             halign='left',
             valign='middle',
             markup=True,
@@ -1140,7 +1210,7 @@ class StoryDetailScreen(Screen):
             text=f"[color=#FFD700]📍[/color] {story.get('location', 'Sin ubicación')}",
             font_size=sp(14),
             color=(0.6, 0.6, 0.7, 1),
-            size_hint_x=0.4,
+            size_hint_x=0.35,
             halign='right',
             valign='middle',
             markup=True,
@@ -1148,6 +1218,7 @@ class StoryDetailScreen(Screen):
         )
         location.bind(size=location.setter('text_size'))
 
+        author_info.add_widget(avatar_widget)
         author_info.add_widget(username)
         author_info.add_widget(location)
 
@@ -1171,7 +1242,7 @@ class StoryDetailScreen(Screen):
             carousel = Carousel(direction='right', loop=True, size_hint_y=None, height=dp(260))
             for path in images:
                 try:
-                    img = Image(source=path, allow_stretch=True, keep_ratio=True)
+                    img = Image(source=path, fit_mode='contain')
                     carousel.add_widget(img)
                 except Exception as e:
                     print(f"Error cargando imagen: {e}")
@@ -1477,6 +1548,16 @@ class NotificationsScreen(Screen):
         self.notifications = []
         self.offset = 0
         self.page_size = 20
+        # Construir la interfaz y añadirla al Screen para que
+        # `self.notifications_layout` exista antes de `on_enter`.
+        try:
+            ui = self.build()
+            if ui is not None:
+                self.add_widget(ui)
+        except Exception:
+            # Si ocurre algún error al construir la UI, no romper el init;
+            # la pantalla intentará reconstruir en on_enter.
+            pass
 
     def on_enter(self):
         """Se ejecuta cuando se entra a la pantalla."""
@@ -1613,17 +1694,25 @@ class NotificationsScreen(Screen):
             self.db.mark_all_notifications_as_read(app.current_user['id'])
             self.load_notifications()
 
+    def go_back(self, instance):
+        """Volver al feed principal"""
+        if hasattr(self, 'manager') and self.manager:
+            try:
+                self.manager.current = 'feed'
+            except Exception:
+                pass
+
     def build(self):
         """Construye la interfaz de la pantalla de notificaciones."""
         layout = BoxLayout(orientation='vertical')
 
-        # Header
+        # Header: title centered with a row of small buttons under it
         header = BoxLayout(
-            orientation='horizontal',
+            orientation='vertical',
             size_hint_y=None,
-            height=dp(60),
-            padding=[dp(16), dp(8)],
-            spacing=dp(16)
+            height=dp(84),
+            padding=[dp(12), dp(6)],
+            spacing=dp(6)
         )
 
         title = Label(
@@ -1631,23 +1720,45 @@ class NotificationsScreen(Screen):
             font_size=sp(20),
             color=(1, 1, 1, 1),
             markup=True,
-            halign='left',
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            height=dp(40),
             font_name='EmojiFont' if 'EmojiFont' in LabelBase._fonts else 'SegoeUIEmoji' if 'SegoeUIEmoji' in LabelBase._fonts else None
         )
 
-        mark_all_btn = Button(
-            text='Marcar todas',
+        # Row with small buttons under the title
+        btn_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(36), spacing=dp(8))
+
+        back_btn = Button(
+            text='Volver',
             size_hint_x=None,
-            width=dp(120),
+            width=dp(80),
+            background_normal='',
+            background_color=(0.2, 0.2, 0.25, 1),
+            color=(0.9, 0.9, 0.9, 1),
+            font_size=sp(14)
+        )
+        back_btn.bind(on_press=self.go_back)
+
+        mark_all_btn = Button(
+            text='Marcar',
+            size_hint_x=None,
+            width=dp(72),
             background_normal='',
             background_color=(0.2, 0.6, 1, 1),
             color=(1, 1, 1, 1),
-            font_size=sp(12)
+            font_size=sp(11)
         )
         mark_all_btn.bind(on_press=self.mark_all_as_read)
 
+        from kivy.uix.widget import Widget as _Spacer
+        btn_row.add_widget(back_btn)
+        btn_row.add_widget(_Spacer())
+        btn_row.add_widget(mark_all_btn)
+
         header.add_widget(title)
-        header.add_widget(mark_all_btn)
+        header.add_widget(btn_row)
 
         # ScrollView para las notificaciones
         scroll = ScrollView()
@@ -2266,7 +2377,7 @@ class ProfileScreen(Screen):
         profile_info = BoxLayout(
             orientation='vertical',
             size_hint_y=None,
-            height=dp(180),
+            height=dp(270),
             spacing=dp(10),
             padding=[dp(20), dp(20)]
         )
@@ -2316,16 +2427,30 @@ class ProfileScreen(Screen):
         profile_info.add_widget(email_label)
         profile_info.add_widget(stats_label)
 
-        logout_btn = Button(
+        # Small centered logout button inside profile block (red, compact)
+        from kivy.uix.widget import Widget as _InnerSpacer
+        logout_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(44))
+        logout_row.add_widget(_InnerSpacer(size_hint_x=1))
+        content_logout_btn = Button(
             text='Cerrar Sesión',
-            size_hint_y=None,
-            height=dp(50),
+            size_hint=(None, None),
+            size=(dp(120), dp(36)),
             background_normal='',
-            background_color=(0.6, 0.2, 0.2, 1),
+            background_color=(0.75, 0.15, 0.15, 1),
             color=(1, 1, 1, 1),
-            font_size=sp(15)
+            font_size=sp(13)
         )
-        logout_btn.bind(on_press=self.logout)
+        content_logout_btn.bind(on_press=self.logout)
+        logout_row.add_widget(content_logout_btn)
+        logout_row.add_widget(_InnerSpacer(size_hint_x=1))
+        profile_info.add_widget(logout_row)
+
+        # Mostrar el botón de logout del header y ocultar el del contenido
+        try:
+            self.logout_btn_header.opacity = 1
+            self.logout_btn_header.disabled = False
+        except Exception:
+            pass
 
         stories_title = Label(
             text='[color=#FFD700]📚[/color] Mis Historias',
@@ -2342,7 +2467,9 @@ class ProfileScreen(Screen):
         stories_title.bind(size=stories_title.setter('text_size'))
 
         self.content_layout.add_widget(profile_info)
-        self.content_layout.add_widget(logout_btn)
+        # slightly larger spacer to avoid stories overlapping profile card (+3px)
+        from kivy.uix.widget import Widget as _Spacer
+        self.content_layout.add_widget(_Spacer(size_hint_y=None, height=dp(33)))
         self.content_layout.add_widget(stories_title)
 
         if stories:
